@@ -1,8 +1,10 @@
 // index.js
 import express from "express";
+import 'dotenv/config';
 import pkg from "body-parser";
 import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
+
 
 // Cargar variables del archivo .env
 config();
@@ -12,10 +14,14 @@ const app = express();
 app.use(urlencoded({ extended: false }));
 
 // Inicializar Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Faltan SUPABASE_URL o SUPABASE_KEY en .env");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Mensaje de bienvenida inicial
 const MENSAJE_BIENVENIDA =
