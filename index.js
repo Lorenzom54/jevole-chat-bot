@@ -23,6 +23,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 app.post("/webhook", async (req, res) => {
+  console.log("📥 Mensaje recibido de Twilio:", req.body);
   const from = req.body.From;
   const body = req.body.Body?.trim();
   const MessagingResponse = twilio.twiml.MessagingResponse;
