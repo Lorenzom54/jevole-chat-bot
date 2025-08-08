@@ -2,8 +2,7 @@ import express from "express";
 import { urlencoded } from "body-parser";
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
-dotenv.config();
+
 
 const app = express();
 app.use(urlencoded({ extended: false }));
