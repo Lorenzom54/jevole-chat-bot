@@ -1,77 +1,67 @@
+// index.js
 import express from "express";
-import bodyParser from "body-parser";
-import twilio from "twilio";
+import pkg from "body-parser";
+import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
+// Cargar variables del archivo .env
+config();
 
+const { urlencoded } = pkg;
 const app = express();
-const { urlencoded } = bodyParser;
 app.use(urlencoded({ extended: false }));
 
-
+// Inicializar Supabase
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 );
 
-app.post("/webhook", async (req, res) => {
-  const twiml = new twilio.twiml.MessagingResponse();
-  const mensaje = req.body.Body;
-  const telefono = req.body.From;
+// Mensaje de bienvenida inicial
+const MENSAJE_BIENVENIDA =
+  "Hola 👋 Gracias por contactar con Jevole Coffee.\n\nPara reservar una mesa, por favor responde con:\n\n📅 Fecha (dd/mm/aaaa)\n⏰ Hora (hh:mm)\n👥 Nº de personas\n\nEjemplo:\n23/08/2025\n20:00\n4 personas";
+
+app.post("/whatsapp", async (req, res) => {
+  const mensaje = req.body.Body || "";
+  const telefono = req.body.From || "";
+  const lineas = mensaje.split("\n").map((l) => l.trim()).filter(Boolean);
+
   console.log("📥 Mensaje recibido de Twilio:", req.body);
-
-  const responder = (texto) => {
-    twiml.message(texto);
-    res.writeHead(200, { "Content-Type": "text/xml" });
-    res.end(twiml.toString());
-  };
-
-  const lineas = mensaje.split("\n").map(l => l.trim()).filter(l => l.length > 0);
   console.log("📄 Líneas detectadas:", lineas);
 
-  // Si aún no se ha recibido suficiente información
-  if (lineas.length < 3) {
-    return responder(
-      "¡Hola! 😊 Para hacer una reserva, por favor responde con:\n\n📅 Fecha (ej: 23/08/2025)\n⏰ Hora (ej: 20:00)\n👥 Número de personas (ej: 5 personas)"
-    );
+  if (lineas.length === 3) {
+    const [fecha, hora, personasRaw] = lineas;
+    const personas = personasRaw.match(/\d+/)?.[0]; // Extrae número
+
+    if (personas && fecha.match(/\d{2}\/\d{2}\/\d{4}/) && hora.match(/\d{2}:\d{2}/)) {
+      const { error } = await supabase.from("reservas").insert([
+        {
+          fecha,
+          hora,
+          personas,
+          telefono_cliente: telefono,
+          estado: "pendiente",
+        },
+      ]);
+
+      if (error) {
+        console.error("❌ Error al guardar en Supabase:", error);
+        return res.send("Hubo un problema al guardar tu reserva. Intenta más tarde.");
+      }
+
+      console.log("✅ Reserva guardada correctamente");
+      return res.send(
+        `✅ Hemos recibido tu solicitud de reserva para el ${fecha} a las ${hora} para ${personas} personas.\n\nUn miembro del equipo te confirmará en breve.`
+      );
+    }
   }
 
-  const [fecha, hora, personasLinea] = lineas;
-
-  // Extraer número de personas desde texto como "5 personas"
-  const matchPersonas = personasLinea.match(/\d+/);
-  const personas = matchPersonas ? parseInt(matchPersonas[0]) : null;
-
-  if (!fecha || !hora || !personas) {
-    return responder(
-      "No te entendí. Asegúrate de enviar:\n📅 Fecha\n⏰ Hora\n👥 Número de personas"
-    );
-  }
-
-  const reserva = {
-    fecha,
-    hora,
-    personas,
-    telefono_cliente: telefono,
-    estado: "pendiente",
-  };
-
-  console.log("➡️ Reserva detectada:");
-  console.log(reserva);
-
-  const { error } = await supabase.from("reservas").insert([reserva]);
-
-  if (error) {
-    console.error("❌ Error al guardar reserva:", error);
-    return responder("Hubo un error al registrar tu reserva. Intenta más tarde.");
-  }
-
-  responder(
-    `✅ Gracias, hemos registrado tu reserva para el ${fecha} a las ${hora} para ${personas} personas. Te confirmaremos en breve.`
-  );
+  // Si no reconoce el formato
+  return res.send(MENSAJE_BIENVENIDA);
 });
 
+// Puerto dinámico para Render o 3000 local
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en el puerto ${PORT}`);
+  console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
 });
