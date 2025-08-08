@@ -2,74 +2,102 @@ import 'dotenv/config';
 import express from 'express';
 import bodyParser from 'body-parser';
 import { createClient } from '@supabase/supabase-js';
+import twilio from 'twilio';
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-// Inicializar Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
-// Función para convertir fecha DD/MM/YYYY a YYYY-MM-DD
+const EMPLEADO_WHATSAPP = 'whatsapp:+34XXXXXXXXX'; // Número del empleado autorizado
+
 function formatearFecha(fechaStr) {
   const [dd, mm, yyyy] = fechaStr.split('/');
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// Estado en memoria para simplificar (puedes usar DB para producción)
+const reservasPendientes = new Map();
+
 app.post('/webhook', async (req, res) => {
-  const messageBody = req.body.Body?.trim();
+  const messageRaw = req.body.Body?.trim();
+  const message = messageRaw?.toLowerCase() || '';
   const from = req.body.From;
 
-  console.log('📩 Mensaje recibido:', messageBody);
-  console.log('📞 Desde:', from);
+  console.log('Mensaje recibido:', messageRaw, 'Desde:', from);
 
-  if (!messageBody) {
-    return res.send('<Response><Message>No se recibió ningún mensaje válido.</Message></Response>');
+  // Si el mensaje viene del empleado y es respuesta para aceptar/rechazar
+  if (from === EMPLEADO_WHATSAPP) {
+    if (message === 'si' || message === 'no') {
+      const reserva = reservasPendientes.get('ultima');
+      if (!reserva) {
+        return res.send('<Response><Message>No hay reservas pendientes para confirmar.</Message></Response>');
+      }
+      reservasPendientes.delete('ultima');
+
+      if (message === 'si') {
+        try {
+          const { error } = await supabase.from('reservas').insert([reserva]);
+          if (error) throw error;
+
+          await twilioClient.messages.create({
+            from: process.env.TWILIO_WHATSAPP_NUMBER,
+            to: reserva.telefono_cliente,
+            body: `✅ Tu reserva para el ${reserva.fecha} a las ${reserva.hora} para ${reserva.personas} personas ha sido confirmada. ¡Gracias!`,
+          });
+
+          return res.send('<Response><Message>Reserva aceptada y cliente notificado.</Message></Response>');
+        } catch (e) {
+          console.error('Error guardando reserva:', e);
+          return res.send('<Response><Message>Error al guardar la reserva.</Message></Response>');
+        }
+      } else {
+        await twilioClient.messages.create({
+          from: process.env.TWILIO_WHATSAPP_NUMBER,
+          to: reserva.telefono_cliente,
+          body: `❌ Lo sentimos, tu reserva para el ${reserva.fecha} a las ${reserva.hora} para ${reserva.personas} personas fue rechazada.`,
+        });
+        return res.send('<Response><Message>Reserva rechazada y cliente notificado.</Message></Response>');
+      }
+    }
+    return res.send('<Response><Message>Responde con "Si" para aceptar o "No" para rechazar la reserva.</Message></Response>');
   }
 
-  // Buscar fecha, hora y personas en el mensaje
+  // Si el mensaje viene del cliente y tiene formato de reserva
   const regex = /(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s+(\d+)\s+personas?/i;
-  const match = messageBody.match(regex);
+  const match = messageRaw.match(regex);
 
   if (match) {
     const [, fecha, hora, personas] = match;
-    const telefono_cliente = from;
+    const reserva = {
+      fecha: formatearFecha(fecha),
+      hora,
+      personas: parseInt(personas),
+      telefono_cliente: from,
+      estado: 'pendiente',
+    };
 
-    const fechaIso = formatearFecha(fecha);
+    reservasPendientes.set('ultima', reserva);
 
-    try {
-      const { data, error } = await supabase.from('reservas').insert([
-        {
-          fecha: fechaIso,
-          hora,
-          personas: parseInt(personas),
-          telefono_cliente,
-          estado: 'pendiente',
-        },
-      ]);
+    await twilioClient.messages.create({
+      from: process.env.TWILIO_WHATSAPP_NUMBER,
+      to: EMPLEADO_WHATSAPP,
+      body: `Nueva reserva pendiente:\nFecha: ${fecha}\nHora: ${hora}\nPersonas: ${personas}\nResponde "Si" para aceptar o "No" para rechazar.`,
+    });
 
-      if (error) throw error;
-
-      console.log('✅ Reserva registrada:', data);
-
-      return res.send(`
-        <Response>
-          <Message>Reserva recibida para el ${fecha} a las ${hora} para ${personas} personas. Un empleado la confirmará pronto.</Message>
-        </Response>
-      `);
-    } catch (err) {
-      console.error('❌ Error al guardar la reserva:', err.message);
-      return res.send('<Response><Message>Ocurrió un error al registrar la reserva. Inténtalo más tarde.</Message></Response>');
-    }
-  } else {
-    return res.send('<Response><Message>No te entendí. Por favor, escribe el mensaje así: 23/08/2025 20:00 5 personas</Message></Response>');
+    return res.send('<Response><Message>Gracias por tu reserva. Un empleado la revisará y te confirmará pronto.</Message></Response>');
   }
+
+  // Mensaje no reconocido o primer contacto - mensaje de bienvenida
+  const bienvenida = `☕ ¡Hola! Bienvenido a Jevole Coffee\n
+Para hacer una reserva, por favor responde con estos tres datos separados por espacios:\n
+📅 Día (DD/MM/YYYY)\n⏰ Hora (HH:mm)\n👥 Número de personas\n
+Ejemplo:\n23/08/2025 20:00 5 personas`;
+
+  return res.send(`<Response><Message>${bienvenida}</Message></Response>`);
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor escuchando en el puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
