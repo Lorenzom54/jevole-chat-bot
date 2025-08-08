@@ -1,11 +1,13 @@
 import express from "express";
-import { urlencoded } from "body-parser";
+import bodyParser from "body-parser";
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 
 
 const app = express();
+const { urlencoded } = bodyParser;
 app.use(urlencoded({ extended: false }));
+
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
