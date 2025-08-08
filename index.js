@@ -34,13 +34,21 @@ app.post("/webhook", async (req, res) => {
 const contieneHora = /\b\d{1,2}[:h]\d{2}/.test(body); // ej: 20:00 o 20h00
 const contienePersonas = /\b\d{1,2} (personas|personas?)/i.test(body); // ej: 4 personas
 
-if (!(contieneFecha && contieneHora && contienePersonas)) {
+const lineas = body.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+if (lineas.length < 3) {
   twiml.message(
     `☕ ¡Hola! Bienvenido a Jevole Coffee\nPara hacer una reserva, por favor responde con estos tres datos:\n📅 Día\n⏰ Hora\n👥 Número de personas`
   );
   res.writeHead(200, { "Content-Type": "text/xml" });
   return res.end(twiml.toString());
 }
+
+const [fecha, hora, personas] = lineas;
+
+console.log("➡️ Reserva detectada:");
+console.log({ fecha, hora, personas });
+
 
 
   // Cliente envía solicitud de reserva
