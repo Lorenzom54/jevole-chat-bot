@@ -34,11 +34,16 @@ app.post("/webhook", async (req, res) => {
 const contieneHora = /\b\d{1,2}[:h]\d{2}/.test(body); // ej: 20:00 o 20h00
 const contienePersonas = /\b\d{1,2} (personas|personas?)/i.test(body); // ej: 4 personas
 
-let lineas = body.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+const lineas = body
+  .split(/\r?\n/)                      // Dividir por saltos de línea
+  .map(linea => linea.trim())         // Quitar espacios
+  .filter(linea => linea.length > 0); // Eliminar líneas vacías
+
 console.log("📄 Líneas detectadas:", lineas);
 
-if (lineas[0].toLowerCase().includes("hola")) {
-  lineas.shift();
+// En caso de que comience con "hola" u otro saludo
+if (lineas.length > 0 && lineas[0].toLowerCase().includes("hola")) {
+  lineas.shift(); // Eliminar saludo
 }
 
 if (lineas.length < 3) {
@@ -54,6 +59,7 @@ const [fecha, hora, personas] = lineas;
 
 console.log("➡️ Reserva detectada:");
 console.log({ fecha, hora, personas });
+
 
 
 
