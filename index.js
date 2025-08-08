@@ -34,9 +34,15 @@ app.post("/webhook", async (req, res) => {
 const contieneHora = /\b\d{1,2}[:h]\d{2}/.test(body); // ej: 20:00 o 20h00
 const contienePersonas = /\b\d{1,2} (personas|personas?)/i.test(body); // ej: 4 personas
 
-const lineas = body.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+let lineas = body.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+console.log("📄 Líneas detectadas:", lineas);
+
+if (lineas[0].toLowerCase().includes("hola")) {
+  lineas.shift();
+}
 
 if (lineas.length < 3) {
+  console.log("❌ No se detectaron los 3 campos esperados");
   twiml.message(
     `☕ ¡Hola! Bienvenido a Jevole Coffee\nPara hacer una reserva, por favor responde con estos tres datos:\n📅 Día\n⏰ Hora\n👥 Número de personas`
   );
