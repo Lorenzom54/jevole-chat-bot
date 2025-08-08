@@ -30,13 +30,18 @@ app.post("/webhook", async (req, res) => {
   const twiml = new MessagingResponse();
 
   // Mensaje inicial
-  if (!body.toLowerCase().includes("día") && !body.toLowerCase().includes("hora")) {
-    twiml.message(
-      `☕ ¡Hola! Bienvenido a Jevole Coffee\nPara hacer una reserva, por favor responde con estos tres datos:\n📅 Día\n⏰ Hora\n👥 Número de personas`
-    );
-    res.writeHead(200, { "Content-Type": "text/xml" });
-    return res.end(twiml.toString());
-  }
+ const contieneFecha = /\b\d{1,2}[\/\-\. ]?(de)? ?[a-zA-Z]+/i.test(body); // ej: 22 agosto o 22/08
+const contieneHora = /\b\d{1,2}[:h]\d{2}/.test(body); // ej: 20:00 o 20h00
+const contienePersonas = /\b\d{1,2} (personas|personas?)/i.test(body); // ej: 4 personas
+
+if (!(contieneFecha && contieneHora && contienePersonas)) {
+  twiml.message(
+    `☕ ¡Hola! Bienvenido a Jevole Coffee\nPara hacer una reserva, por favor responde con estos tres datos:\n📅 Día\n⏰ Hora\n👥 Número de personas`
+  );
+  res.writeHead(200, { "Content-Type": "text/xml" });
+  return res.end(twiml.toString());
+}
+
 
   // Cliente envía solicitud de reserva
   if (body.toLowerCase().includes("día") && body.toLowerCase().includes("hora")) {
